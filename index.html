@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="icon" href="data:," />
+    <title>f3d_web</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: #101214;
+        position: relative;
+      }
+      #canvas {
+        display: block;
+        background: #101214;
+        position: absolute;
+        left: 0;
+        top: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="canvas"></canvas>
+    <script>
+      var Module = {
+        canvas: document.getElementById("canvas"),
+        print: function () {
+          var text = Array.prototype.slice.call(arguments).join(" ");
+          console.log(text);
+        },
+        printErr: function () {
+          var text = Array.prototype.slice.call(arguments).join(" ");
+          if (typeof text === "string") {
+            if (text.startsWith("[E]")) {
+              console.error(text);
+              return;
+            }
+            if (text.startsWith("[W]")) {
+              console.warn(text);
+              return;
+            }
+          }
+          console.log(text);
+        },
+      };
+    </script>
+    <script src="f3d_web.js"></script>
+  </body>
+</html>
