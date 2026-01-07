@@ -17,6 +17,78 @@
         background: #101214;
         position: relative;
       }
+      #message {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%);
+        max-width: 70ch;
+        padding: 12px 16px;
+        background: rgba(0, 0, 0, 0.75);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        border-radius: 8px;
+        font-size: 14px;
+        color: rgba(255, 255, 255, 0.92);
+        display: none;
+      }
+      #message.visible {
+        display: block;
+      }
+      .webgpu-banner {
+        position: fixed;
+        inset: 0 0 auto 0;
+        z-index: 9999;
+        display: none;
+        gap: 14px;
+        align-items: flex-start;
+        padding: 12px 14px;
+        background: rgba(0, 0, 0, 0.82);
+        color: rgba(255, 255, 255, 0.94);
+        border-bottom: 1px solid rgba(255, 255, 255, 0.18);
+        backdrop-filter: blur(10px);
+      }
+      :root[data-theme="light"] .webgpu-banner {
+        background: rgba(255, 255, 255, 0.9);
+        color: rgba(0, 0, 0, 0.9);
+        border-bottom: 1px solid rgba(0, 0, 0, 0.12);
+      }
+      .webgpu-banner.visible {
+        display: flex;
+      }
+      .webgpu-banner__body {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        min-width: 0;
+      }
+      .webgpu-banner__title {
+        font-weight: 600;
+        font-size: 14px;
+        line-height: 1.2;
+      }
+      .webgpu-banner__details {
+        margin: 0;
+        font-size: 12px;
+        line-height: 1.35;
+        white-space: pre-wrap;
+        opacity: 0.9;
+      }
+      .webgpu-banner__close {
+        flex: 0 0 auto;
+        margin-left: auto;
+        padding: 8px 10px;
+        border-radius: 8px;
+        border: 1px solid rgba(255, 255, 255, 0.22);
+        background: rgba(255, 255, 255, 0.08);
+        color: inherit;
+        font: inherit;
+        font-size: 12px;
+        cursor: pointer;
+      }
+      :root[data-theme="light"] .webgpu-banner__close {
+        border: 1px solid rgba(0, 0, 0, 0.18);
+        background: rgba(0, 0, 0, 0.06);
+      }
       #canvas {
         display: block;
         background: #101214;
@@ -26,8 +98,81 @@
         touch-action: none;
       }
     </style>
+    <script>
+      (function () {
+        function formatError(value) {
+          if (value === null || value === undefined) {
+            return "";
+          }
+          if (typeof value === "string") {
+            return value;
+          }
+          if (typeof value === "object" && value.message) {
+            return String(value.message);
+          }
+          try {
+            return JSON.stringify(value);
+          } catch (error) {
+            return String(value);
+          }
+        }
+
+        function ensureBanner() {
+          var existing = document.getElementById("webgpu-failure-banner");
+          if (existing) {
+            return existing;
+          }
+
+          var banner = document.createElement("div");
+          banner.id = "webgpu-failure-banner";
+          banner.className = "webgpu-banner";
+
+          var body = document.createElement("div");
+          body.className = "webgpu-banner__body";
+
+          var title = document.createElement("div");
+          title.className = "webgpu-banner__title";
+          title.textContent = "WebGPU call failed";
+
+          var details = document.createElement("pre");
+          details.className = "webgpu-banner__details";
+
+          body.appendChild(title);
+          body.appendChild(details);
+
+          var close = document.createElement("button");
+          close.className = "webgpu-banner__close";
+          close.type = "button";
+          close.textContent = "Close";
+          close.addEventListener("click", function () {
+            banner.classList.remove("visible");
+          });
+
+          banner.appendChild(body);
+          banner.appendChild(close);
+          document.body.appendChild(banner);
+          return banner;
+        }
+
+        window.f3dShowWebGpuFailure = function (operation, error) {
+          var banner = ensureBanner();
+          var details = banner.querySelector(".webgpu-banner__details");
+          if (details) {
+            var lines = [
+              "WebGPU call failed.",
+              "Operation: " + (operation || "unknown"),
+              "Error: " + formatError(error),
+              "This device/browser may not fully support WebGPU.",
+            ];
+            details.textContent = lines.join("\n");
+          }
+          banner.classList.add("visible");
+        };
+      })();
+    </script>
   </head>
   <body>
+    <div id="message"></div>
     <canvas id="canvas"></canvas>
     <script>
       var Module = {
