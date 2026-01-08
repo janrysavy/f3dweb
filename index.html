@@ -175,8 +175,13 @@
     <div id="message"></div>
     <canvas id="canvas"></canvas>
     <script>
+      var f3dAssetVersion = "20260108141647";
       var Module = {
         canvas: document.getElementById("canvas"),
+        locateFile: function (path, prefix) {
+          var suffix = f3dAssetVersion ? "?v=" + encodeURIComponent(f3dAssetVersion) : "";
+          return prefix + path + suffix;
+        },
         print: function () {
           var text = Array.prototype.slice.call(arguments).join(" ");
           console.log(text);
@@ -197,6 +202,6 @@
         },
       };
     </script>
-    <script src="f3d_web.js"></script>
+    <script src="f3d_web.js?v=20260108141647"></script>
   </body>
 </html>
