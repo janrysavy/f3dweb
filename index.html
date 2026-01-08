@@ -35,6 +35,24 @@
       #message.visible {
         display: block;
       }
+      .loading-overlay {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%);
+        padding: 12px 16px;
+        border-radius: 8px;
+        background: rgba(0, 0, 0, 0.75);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        color: rgba(255, 255, 255, 0.92);
+        font-size: 14px;
+        letter-spacing: 0.02em;
+        display: none;
+        z-index: 10;
+      }
+      .loading-overlay.visible {
+        display: block;
+      }
       #canvas {
         display: block;
         background: #101214;
@@ -307,10 +325,17 @@
     </script>
   </head>
   <body>
+    <div id="loading" class="loading-overlay visible">Loading assets...</div>
     <div id="message"></div>
     <canvas id="canvas"></canvas>
     <script>
-      var f3dAssetVersion = "20260108162642";
+      var f3dAssetVersion = "20260108164103";
+      var loadingOverlay = document.getElementById("loading");
+      function hideLoadingOverlay() {
+        if (loadingOverlay) {
+          loadingOverlay.classList.remove("visible");
+        }
+      }
       var Module = {
         canvas: document.getElementById("canvas"),
         locateFile: function (path, prefix) {
@@ -335,8 +360,30 @@
           }
           console.log(text);
         },
+        onRuntimeInitialized: function () {
+          // Keep the overlay until the app signals readiness.
+        },
       };
+      (function () {
+        function startApp() {
+          var script = document.createElement("script");
+          script.src = "f3d_web.js" +
+            (f3dAssetVersion ? "?v=" + encodeURIComponent(f3dAssetVersion) : "");
+          script.defer = true;
+          document.body.appendChild(script);
+        }
+        function pollReady() {
+          if (window.f3dReady) {
+            hideLoadingOverlay();
+            return;
+          }
+          requestAnimationFrame(pollReady);
+        }
+        requestAnimationFrame(function () {
+          requestAnimationFrame(startApp);
+        });
+        requestAnimationFrame(pollReady);
+      })();
     </script>
-    <script src="f3d_web.js?v=20260108162642"></script>
   </body>
 </html>
