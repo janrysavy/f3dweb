@@ -97,6 +97,57 @@
         top: 0;
         touch-action: none;
       }
+      #clipboard-fallback {
+        position: fixed;
+        inset: 0;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+        background: rgba(0, 0, 0, 0.65);
+        z-index: 10000;
+      }
+      #clipboard-fallback.visible {
+        display: flex;
+      }
+      .clipboard-panel {
+        width: min(90vw, 540px);
+        background: rgba(20, 22, 24, 0.98);
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        border-radius: 10px;
+        padding: 16px;
+        color: rgba(255, 255, 255, 0.9);
+        font-size: 14px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      .clipboard-panel__textarea {
+        width: 100%;
+        min-height: 120px;
+        resize: vertical;
+        border-radius: 8px;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        background: rgba(255, 255, 255, 0.05);
+        color: inherit;
+        padding: 8px 10px;
+        font: inherit;
+      }
+      .clipboard-panel__actions {
+        display: flex;
+        gap: 8px;
+        justify-content: flex-end;
+      }
+      .clipboard-panel__button {
+        border-radius: 8px;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        background: rgba(255, 255, 255, 0.08);
+        color: inherit;
+        font: inherit;
+        font-size: 12px;
+        padding: 8px 12px;
+        cursor: pointer;
+      }
     </style>
     <script>
       (function () {
@@ -169,13 +220,97 @@
           banner.classList.add("visible");
         };
       })();
+      (function () {
+        function fallbackExecCommandCopy(text, textarea) {
+          textarea.focus();
+          textarea.select();
+          textarea.setSelectionRange(0, textarea.value.length);
+          try {
+            return document.execCommand("copy");
+          } catch (error) {
+            return false;
+          }
+        }
+
+        function ensureClipboardFallback() {
+          var existing = document.getElementById("clipboard-fallback");
+          if (existing) {
+            return existing;
+          }
+
+          var overlay = document.createElement("div");
+          overlay.id = "clipboard-fallback";
+
+          var panel = document.createElement("div");
+          panel.className = "clipboard-panel";
+
+          var title = document.createElement("div");
+          title.textContent = "Copy to clipboard";
+
+          var textarea = document.createElement("textarea");
+          textarea.className = "clipboard-panel__textarea";
+          textarea.setAttribute("readonly", "");
+
+          var actions = document.createElement("div");
+          actions.className = "clipboard-panel__actions";
+
+          var closeButton = document.createElement("button");
+          closeButton.type = "button";
+          closeButton.className = "clipboard-panel__button";
+          closeButton.textContent = "Close";
+
+          var copyButton = document.createElement("button");
+          copyButton.type = "button";
+          copyButton.className = "clipboard-panel__button";
+          copyButton.textContent = "Copy";
+
+          closeButton.addEventListener("click", function () {
+            overlay.classList.remove("visible");
+          });
+          copyButton.addEventListener("click", function () {
+            var value = textarea.value || "";
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+              navigator.clipboard.writeText(value).then(function () {
+                overlay.classList.remove("visible");
+              }).catch(function () {
+                if (fallbackExecCommandCopy(value, textarea)) {
+                  overlay.classList.remove("visible");
+                }
+              });
+              return;
+            }
+            if (fallbackExecCommandCopy(value, textarea)) {
+              overlay.classList.remove("visible");
+            }
+          });
+
+          actions.appendChild(closeButton);
+          actions.appendChild(copyButton);
+          panel.appendChild(title);
+          panel.appendChild(textarea);
+          panel.appendChild(actions);
+          overlay.appendChild(panel);
+          document.body.appendChild(overlay);
+          overlay._textarea = textarea;
+          return overlay;
+        }
+
+        window.f3dShowClipboardFallback = function (text) {
+          var overlay = ensureClipboardFallback();
+          overlay._textarea.value = text || "";
+          overlay.classList.add("visible");
+          overlay._textarea.focus();
+          overlay._textarea.select();
+          overlay._textarea.setSelectionRange(0, overlay._textarea.value.length);
+        };
+      })();
     </script>
   </head>
   <body>
     <div id="message"></div>
     <canvas id="canvas"></canvas>
     <script>
-      var f3dAssetVersion = "20260108145707";
+      var f3dAssetVersion = "20260108150551";
       var Module = {
         canvas: document.getElementById("canvas"),
         locateFile: function (path, prefix) {
@@ -202,6 +337,6 @@
         },
       };
     </script>
-    <script src="f3d_web.js?v=20260108145707"></script>
+    <script src="f3d_web.js?v=20260108150551"></script>
   </body>
 </html>
