@@ -35,61 +35,6 @@
       #message.visible {
         display: block;
       }
-      .webgpu-banner {
-        position: fixed;
-        inset: 0 0 auto 0;
-        z-index: 9999;
-        display: none;
-        gap: 14px;
-        align-items: flex-start;
-        padding: 12px 14px;
-        background: rgba(0, 0, 0, 0.82);
-        color: rgba(255, 255, 255, 0.94);
-        border-bottom: 1px solid rgba(255, 255, 255, 0.18);
-        backdrop-filter: blur(10px);
-      }
-      :root[data-theme="light"] .webgpu-banner {
-        background: rgba(255, 255, 255, 0.9);
-        color: rgba(0, 0, 0, 0.9);
-        border-bottom: 1px solid rgba(0, 0, 0, 0.12);
-      }
-      .webgpu-banner.visible {
-        display: flex;
-      }
-      .webgpu-banner__body {
-        display: flex;
-        flex-direction: column;
-        gap: 6px;
-        min-width: 0;
-      }
-      .webgpu-banner__title {
-        font-weight: 600;
-        font-size: 14px;
-        line-height: 1.2;
-      }
-      .webgpu-banner__details {
-        margin: 0;
-        font-size: 12px;
-        line-height: 1.35;
-        white-space: pre-wrap;
-        opacity: 0.9;
-      }
-      .webgpu-banner__close {
-        flex: 0 0 auto;
-        margin-left: auto;
-        padding: 8px 10px;
-        border-radius: 8px;
-        border: 1px solid rgba(255, 255, 255, 0.22);
-        background: rgba(255, 255, 255, 0.08);
-        color: inherit;
-        font: inherit;
-        font-size: 12px;
-        cursor: pointer;
-      }
-      :root[data-theme="light"] .webgpu-banner__close {
-        border: 1px solid rgba(0, 0, 0, 0.18);
-        background: rgba(0, 0, 0, 0.06);
-      }
       #canvas {
         display: block;
         background: #101214;
@@ -98,7 +43,7 @@
         top: 0;
         touch-action: none;
       }
-      #clipboard-fallback {
+      .dialog-overlay {
         position: fixed;
         inset: 0;
         display: none;
@@ -106,12 +51,12 @@
         justify-content: center;
         padding: 24px;
         background: rgba(0, 0, 0, 0.65);
-        z-index: 10000;
+        z-index: 9999;
       }
-      #clipboard-fallback.visible {
+      .dialog-overlay.visible {
         display: flex;
       }
-      .clipboard-panel {
+      .dialog-panel {
         width: min(90vw, 540px);
         background: rgba(20, 22, 24, 0.98);
         border: 1px solid rgba(255, 255, 255, 0.15);
@@ -123,7 +68,23 @@
         flex-direction: column;
         gap: 10px;
       }
-      .clipboard-panel__textarea {
+      :root[data-theme="light"] .dialog-panel {
+        background: rgba(255, 255, 255, 0.96);
+        border: 1px solid rgba(0, 0, 0, 0.12);
+        color: rgba(0, 0, 0, 0.9);
+      }
+      .dialog-panel__title {
+        font-weight: 600;
+        font-size: 14px;
+      }
+      .dialog-panel__details {
+        margin: 0;
+        font-size: 12px;
+        line-height: 1.35;
+        white-space: pre-wrap;
+        opacity: 0.9;
+      }
+      .dialog-panel__textarea {
         width: 100%;
         min-height: 120px;
         resize: vertical;
@@ -134,12 +95,16 @@
         padding: 8px 10px;
         font: inherit;
       }
-      .clipboard-panel__actions {
+      :root[data-theme="light"] .dialog-panel__textarea {
+        border: 1px solid rgba(0, 0, 0, 0.18);
+        background: rgba(0, 0, 0, 0.04);
+      }
+      .dialog-panel__actions {
         display: flex;
         gap: 8px;
         justify-content: flex-end;
       }
-      .clipboard-panel__button {
+      .dialog-panel__button {
         border-radius: 8px;
         border: 1px solid rgba(255, 255, 255, 0.2);
         background: rgba(255, 255, 255, 0.08);
@@ -148,6 +113,10 @@
         font-size: 12px;
         padding: 8px 12px;
         cursor: pointer;
+      }
+      :root[data-theme="light"] .dialog-panel__button {
+        border: 1px solid rgba(0, 0, 0, 0.18);
+        background: rgba(0, 0, 0, 0.06);
       }
     </style>
     <script>
@@ -169,6 +138,18 @@
           }
         }
 
+        function fallbackExecCommandCopy(text, textarea) {
+          textarea.focus();
+          textarea.select();
+          textarea.setSelectionRange(0, textarea.value.length);
+          try {
+            return document.execCommand("copy");
+          } catch (error) {
+            return false;
+          }
+        }
+        window.f3dFallbackExecCommandCopy = fallbackExecCommandCopy;
+
         function ensureBanner() {
           var existing = document.getElementById("webgpu-failure-banner");
           if (existing) {
@@ -177,31 +158,58 @@
 
           var banner = document.createElement("div");
           banner.id = "webgpu-failure-banner";
-          banner.className = "webgpu-banner";
+          banner.className = "dialog-overlay";
 
-          var body = document.createElement("div");
-          body.className = "webgpu-banner__body";
+          var panel = document.createElement("div");
+          panel.className = "dialog-panel";
 
           var title = document.createElement("div");
-          title.className = "webgpu-banner__title";
-          title.textContent = "WebGPU call failed";
+          title.className = "dialog-panel__title";
+          title.textContent = "WebGPU error";
 
           var details = document.createElement("pre");
-          details.className = "webgpu-banner__details";
+          details.className = "dialog-panel__details";
 
-          body.appendChild(title);
-          body.appendChild(details);
+          var actions = document.createElement("div");
+          actions.className = "dialog-panel__actions";
 
-          var close = document.createElement("button");
-          close.className = "webgpu-banner__close";
-          close.type = "button";
-          close.textContent = "Close";
-          close.addEventListener("click", function () {
+          var dismiss = document.createElement("button");
+          dismiss.className = "dialog-panel__button";
+          dismiss.type = "button";
+          dismiss.textContent = "Dismiss";
+          dismiss.addEventListener("click", function () {
             banner.classList.remove("visible");
           });
 
-          banner.appendChild(body);
-          banner.appendChild(close);
+          var copyButton = document.createElement("button");
+          copyButton.className = "dialog-panel__button";
+          copyButton.type = "button";
+          copyButton.textContent = "Copy to clipboard";
+          copyButton.addEventListener("click", function () {
+            var value = details.textContent || "";
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+              navigator.clipboard.writeText(value).catch(function () {
+                window.f3dFallbackExecCommandCopy(value, textarea);
+              });
+              return;
+            }
+            window.f3dFallbackExecCommandCopy(value, textarea);
+          });
+
+          var textarea = document.createElement("textarea");
+          textarea.className = "dialog-panel__textarea";
+          textarea.setAttribute("readonly", "");
+          textarea.style.position = "fixed";
+          textarea.style.opacity = "0";
+          textarea.style.pointerEvents = "none";
+
+          actions.appendChild(dismiss);
+          actions.appendChild(copyButton);
+          panel.appendChild(title);
+          panel.appendChild(details);
+          panel.appendChild(actions);
+          banner.appendChild(panel);
+          banner.appendChild(textarea);
           document.body.appendChild(banner);
           return banner;
         }
@@ -222,17 +230,6 @@
         };
       })();
       (function () {
-        function fallbackExecCommandCopy(text, textarea) {
-          textarea.focus();
-          textarea.select();
-          textarea.setSelectionRange(0, textarea.value.length);
-          try {
-            return document.execCommand("copy");
-          } catch (error) {
-            return false;
-          }
-        }
-
         function ensureClipboardFallback() {
           var existing = document.getElementById("clipboard-fallback");
           if (existing) {
@@ -241,29 +238,31 @@
 
           var overlay = document.createElement("div");
           overlay.id = "clipboard-fallback";
+          overlay.className = "dialog-overlay";
 
           var panel = document.createElement("div");
-          panel.className = "clipboard-panel";
+          panel.className = "dialog-panel";
 
           var title = document.createElement("div");
+          title.className = "dialog-panel__title";
           title.textContent = "Copy to clipboard";
 
           var textarea = document.createElement("textarea");
-          textarea.className = "clipboard-panel__textarea";
+          textarea.className = "dialog-panel__textarea";
           textarea.setAttribute("readonly", "");
 
           var actions = document.createElement("div");
-          actions.className = "clipboard-panel__actions";
+          actions.className = "dialog-panel__actions";
 
           var closeButton = document.createElement("button");
           closeButton.type = "button";
-          closeButton.className = "clipboard-panel__button";
-          closeButton.textContent = "Close";
+          closeButton.className = "dialog-panel__button";
+          closeButton.textContent = "Dismiss";
 
           var copyButton = document.createElement("button");
           copyButton.type = "button";
-          copyButton.className = "clipboard-panel__button";
-          copyButton.textContent = "Copy";
+          copyButton.className = "dialog-panel__button";
+          copyButton.textContent = "Copy to clipboard";
 
           closeButton.addEventListener("click", function () {
             overlay.classList.remove("visible");
@@ -274,13 +273,13 @@
               navigator.clipboard.writeText(value).then(function () {
                 overlay.classList.remove("visible");
               }).catch(function () {
-                if (fallbackExecCommandCopy(value, textarea)) {
+                if (window.f3dFallbackExecCommandCopy(value, textarea)) {
                   overlay.classList.remove("visible");
                 }
               });
               return;
             }
-            if (fallbackExecCommandCopy(value, textarea)) {
+            if (window.f3dFallbackExecCommandCopy(value, textarea)) {
               overlay.classList.remove("visible");
             }
           });
@@ -311,7 +310,7 @@
     <div id="message"></div>
     <canvas id="canvas"></canvas>
     <script>
-      var f3dAssetVersion = "20260108151206";
+      var f3dAssetVersion = "20260108160753";
       var Module = {
         canvas: document.getElementById("canvas"),
         locateFile: function (path, prefix) {
@@ -338,6 +337,6 @@
         },
       };
     </script>
-    <script src="f3d_web.js?v=20260108151206"></script>
+    <script src="f3d_web.js?v=20260108160753"></script>
   </body>
 </html>
