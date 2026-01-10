@@ -76,6 +76,7 @@
       }
       .dialog-panel {
         width: min(90vw, 540px);
+        max-height: min(90vh, 720px);
         background: rgba(20, 22, 24, 0.98);
         border: 1px solid rgba(255, 255, 255, 0.15);
         border-radius: 10px;
@@ -85,6 +86,7 @@
         display: flex;
         flex-direction: column;
         gap: 10px;
+        overflow: hidden;
       }
       :root[data-theme="light"] .dialog-panel {
         background: rgba(255, 255, 255, 0.96);
@@ -101,6 +103,15 @@
         line-height: 1.35;
         white-space: pre-wrap;
         opacity: 0.9;
+        overflow: auto;
+        padding: 10px 12px;
+        border-radius: 8px;
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        background: rgba(255, 255, 255, 0.04);
+      }
+      :root[data-theme="light"] .dialog-panel__details {
+        border: 1px solid rgba(0, 0, 0, 0.14);
+        background: rgba(0, 0, 0, 0.03);
       }
       .dialog-panel__textarea {
         width: 100%;
@@ -330,7 +341,7 @@
     <div id="message"></div>
     <canvas id="canvas"></canvas>
     <script>
-      var f3dAssetVersion = "20260110181703";
+      var f3dAssetVersion = "20260110182126";
       var loadingOverlay = document.getElementById("loading");
       function hideLoadingOverlay() {
         if (loadingOverlay) {
