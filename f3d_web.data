@@ -7474,7 +7474,9 @@ struct ObjectUniforms {
 };
 
 override kUseHiddenThickness: bool = false;
+override kUseMeshHiddenAlpha: bool = false;
 const kHiddenAlphaMul: f32 = 0.65;
+const kMeshHiddenAlphaMul: f32 = 0.25;
 
 @group(0) @binding(0)
 var<uniform> frame: FrameUniforms;
@@ -7567,7 +7569,8 @@ fn fsMain(input: VertexOut) -> @location(0) vec4<f32> {
   let mask = 1.0 - smoothstep(halfWidth - aa, halfWidth + aa, dist);
 
   let isHiddenPass = kUseHiddenThickness && hasHiddenThickness;
-  let alphaMul = select(1.0, kHiddenAlphaMul, isHiddenPass);
+  let hiddenAlphaMul = select(kHiddenAlphaMul, kMeshHiddenAlphaMul, kUseMeshHiddenAlpha);
+  let alphaMul = select(1.0, hiddenAlphaMul, isHiddenPass);
   return vec4<f32>(object.color.rgb, object.color.a * alphaMul * mask);
 }
 struct GBufferFrame {
@@ -9159,6 +9162,9 @@ struct ObjectUniforms {
   pick: vec4<f32>,
 };
 
+override kIsHiddenPass: bool = false;
+const kHiddenAlphaMul: f32 = 0.15;
+
 @group(0) @binding(0)
 var<uniform> frame: FrameUniforms;
 
@@ -9183,6 +9189,6 @@ fn vsMain(input: VertexIn) -> VertexOut {
 
 @fragment
 fn fsMain() -> @location(0) vec4<f32> {
-  return object.color;
+  let alphaMul = select(1.0, kHiddenAlphaMul, kIsHiddenPass);
+  return vec4<f32>(object.color.rgb, object.color.a * alphaMul);
 }
-
