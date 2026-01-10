@@ -8643,6 +8643,12 @@ fn fsMain(input: VertexOut, @builtin(front_facing) isFront: bool) -> @location(0
   let materialType = i32(round(object.material.y));
   let patternId = i32(round(object.material.x));
   let gridOnly = object.material.w;
+  // Section surfaces store a non-zero section-edge id in material.z (used by `sectionsId.wgsl`).
+  // Use it to apply a slightly richer, view-dependent lighting that helps flat section cuts read better.
+  let isSectionSurface = materialType == MATERIAL_TYPE_STANDARD && object.material.z > 0.5;
+  // Solid surfaces tag material.z with a negative value (see `src/app/scene_builder.cpp`) so we can add a subtle
+  // Solids/Fine lighting accent without affecting other mesh-shaded objects (sections/profiles).
+  let isSolidSurface = materialType == MATERIAL_TYPE_STANDARD && object.material.z < -0.5;
   // Terrain encodes grid scale in material.z even in glass mode; use it to skip hatch.
   let isTerrain =
     materialType == MATERIAL_TYPE_TERRAIN ||
@@ -8712,14 +8718,41 @@ fn fsMain(input: VertexOut, @builtin(front_facing) isFront: bool) -> @location(0
     return vec4<f32>(color, alpha);
   }
 
-  if (patternId == 0) {
-    return vec4<f32>(base, object.color.a);
+  let hatch = select(0.0, hatchPattern(input.worldPos, n, patternId, object.material.w), patternId != 0);
+  let ink = vec3<f32>(0.0, 0.0, 0.0);
+  var color = mix(base, ink, hatch);
+
+  if (isSectionSurface) {
+    let viewDir = normalize(frame.cameraPos - input.worldPos);
+    let ndotv = max(dot(shadeNormal, viewDir), 0.0);
+    // Rim lighting and a tiny "sheen" add depth cues even when the section plane is nearly flat to the camera.
+    let rim = pow(1.0 - ndotv, 2.2);
+    let halfVec = normalize(light + viewDir);
+    let sheen = pow(max(dot(shadeNormal, halfVec), 0.0), 48.0);
+    // Keep hatching black: attenuate highlights on inked pixels.
+    let highlightMask = 1.0 - clamp(hatch * 1.1, 0.0, 1.0);
+    let highlightTint = mix(object.color.rgb, vec3<f32>(1.0, 1.0, 1.0), 0.65);
+    let highlight = (0.12 * rim + 0.06 * sheen) * highlightMask;
+    color = clamp(color + highlightTint * highlight,
+                  vec3<f32>(0.0, 0.0, 0.0),
+                  vec3<f32>(1.0, 1.0, 1.0));
+  } else if (isSolidSurface) {
+    let viewDir = normalize(frame.cameraPos - input.worldPos);
+    let ndotv = max(dot(shadeNormal, viewDir), 0.0);
+    let rim = pow(1.0 - ndotv, 3.0);
+    // Use a stable key light direction so the highlight reads as "form" rather than purely headlight shading.
+    let keyLight = normalize(vec3<f32>(0.35, 0.85, 0.25));
+    let halfVec = normalize(keyLight + viewDir);
+    let sheen = pow(max(dot(shadeNormal, halfVec), 0.0), 64.0);
+    // Preserve hatch contrast: attenuate highlights on inked pixels.
+    let highlightMask = 1.0 - clamp(hatch * 1.1, 0.0, 1.0);
+    let highlightTint = mix(object.color.rgb, vec3<f32>(1.0, 1.0, 1.0), 0.35);
+    let highlight = (0.06 * rim + 0.05 * sheen) * highlightMask;
+    color = clamp(color + highlightTint * highlight,
+                  vec3<f32>(0.0, 0.0, 0.0),
+                  vec3<f32>(1.0, 1.0, 1.0));
   }
 
-  let hatch = hatchPattern(input.worldPos, n, patternId, object.material.w);
-
-  let ink = vec3<f32>(0.0, 0.0, 0.0);
-  let color = mix(base, ink, hatch);
   return vec4<f32>(color, object.color.a);
 }
 
