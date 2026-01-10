@@ -7474,7 +7474,7 @@ struct ObjectUniforms {
 };
 
 override kUseHiddenThickness: bool = false;
-override kHiddenAlphaMul: f32 = 1.0;
+const kHiddenAlphaMul: f32 = 0.65;
 
 @group(0) @binding(0)
 var<uniform> frame: FrameUniforms;
@@ -7537,10 +7537,9 @@ fn vsMain(input: VertexIn) -> VertexOut {
   );
 
   let base = mix(clipA, clipB, input.along);
-  let biasedZ = max(0.0, base.z);
   let shifted = vec4<f32>(
     base.xy + offsetNdc * base.w,
-    biasedZ,
+    base.z,
     base.w
   );
   out.position = shifted;
