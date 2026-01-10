@@ -236,12 +236,13 @@
           var banner = ensureBanner();
           var details = banner.querySelector(".webgpu-banner__details");
           if (details) {
-            var lines = [
-              "WebGPU call failed.",
-              "Operation: " + (operation || "unknown"),
-              "Error: " + formatError(error),
-              "This device/browser may not fully support WebGPU.",
-            ];
+            var lines = [];
+            if (operation) {
+              lines.push("Operation: " + operation);
+            }
+            if (error) {
+              lines.push(formatError(error));
+            }
             details.textContent = lines.join("\n");
           }
           banner.classList.add("visible");
@@ -329,7 +330,7 @@
     <div id="message"></div>
     <canvas id="canvas"></canvas>
     <script>
-      var f3dAssetVersion = "20260110141038";
+      var f3dAssetVersion = "20260110180803";
       var loadingOverlay = document.getElementById("loading");
       function hideLoadingOverlay() {
         if (loadingOverlay) {
