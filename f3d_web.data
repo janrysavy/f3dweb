@@ -7474,6 +7474,7 @@ struct ObjectUniforms {
 };
 
 override kUseHiddenThickness: bool = false;
+override kHiddenAlphaMul: f32 = 1.0;
 
 @group(0) @binding(0)
 var<uniform> frame: FrameUniforms;
@@ -7565,7 +7566,10 @@ fn fsMain(input: VertexOut) -> @location(0) vec4<f32> {
   let halfWidth = 0.5 * thickness;
   let aa = max(0.5, fwidth(dist));
   let mask = 1.0 - smoothstep(halfWidth - aa, halfWidth + aa, dist);
-  return vec4<f32>(object.color.rgb, object.color.a * mask);
+
+  let isHiddenPass = kUseHiddenThickness && hasHiddenThickness;
+  let alphaMul = select(1.0, kHiddenAlphaMul, isHiddenPass);
+  return vec4<f32>(object.color.rgb, object.color.a * alphaMul * mask);
 }
 struct GBufferFrame {
   viewProj: mat4x4<f32>,
