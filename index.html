@@ -234,7 +234,7 @@
 
         window.f3dShowWebGpuFailure = function (operation, error) {
           var banner = ensureBanner();
-          var details = banner.querySelector(".webgpu-banner__details");
+          var details = banner.querySelector(".dialog-panel__details");
           if (details) {
             var lines = [];
             if (operation) {
@@ -330,7 +330,7 @@
     <div id="message"></div>
     <canvas id="canvas"></canvas>
     <script>
-      var f3dAssetVersion = "20260110180803";
+      var f3dAssetVersion = "20260110181703";
       var loadingOverlay = document.getElementById("loading");
       function hideLoadingOverlay() {
         if (loadingOverlay) {
