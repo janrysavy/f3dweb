@@ -258,6 +258,40 @@
           }
           banner.classList.add("visible");
         };
+        (function () {
+          var errorShown = false;
+          function toMessage(value) {
+            try {
+              if (value && value.stack) {
+                return String(value.stack);
+              }
+              if (value && value.message) {
+                return String(value.message);
+              }
+              return String(value);
+            } catch (err) {
+              return "Unknown error";
+            }
+          }
+          window.f3dShowUnhandledError = function (title, error) {
+            if (errorShown) {
+              return;
+            }
+            errorShown = true;
+            if (window.f3dShowWebGpuFailure) {
+              window.f3dShowWebGpuFailure(title, toMessage(error));
+            }
+          };
+          window.addEventListener("error", function (event) {
+            var message = event && event.message ? event.message : "Unhandled error";
+            var detail = event && event.error ? toMessage(event.error) : message;
+            window.f3dShowUnhandledError("Unhandled error", detail);
+          });
+          window.addEventListener("unhandledrejection", function (event) {
+            var reason = event ? event.reason : null;
+            window.f3dShowUnhandledError("Unhandled promise rejection", reason || "Unknown rejection");
+          });
+        })();
       })();
       (function () {
         function ensureClipboardFallback() {
@@ -341,7 +375,7 @@
     <div id="message"></div>
     <canvas id="canvas"></canvas>
     <script>
-      var f3dAssetVersion = "20260110182126";
+      var f3dAssetVersion = "20260111094849";
       var loadingOverlay = document.getElementById("loading");
       function hideLoadingOverlay() {
         if (loadingOverlay) {
@@ -371,6 +405,11 @@
             }
           }
           console.log(text);
+        },
+        onAbort: function (reason) {
+          if (window.f3dShowUnhandledError) {
+            window.f3dShowUnhandledError("Abort", reason || "Unknown abort");
+          }
         },
         onRuntimeInitialized: function () {
           // Keep the overlay until the app signals readiness.
