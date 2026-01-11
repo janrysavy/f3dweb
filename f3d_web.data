@@ -7627,10 +7627,9 @@ fn fsMain(input: VertexOut, @builtin(front_facing) isFront: bool) -> @location(0
     dot(normal, frame.cameraUp),
     dot(normal, frame.cameraForward)
   ));
-  // Project onto camera forward to get linear view depth (positive in front of the camera).
-  let viewDepth = max(dot(input.worldPos - frame.cameraPos, frame.cameraForward), 0.0);
   let packedNormal = viewNormal * 0.5 + 0.5;
-  return vec4<f32>(packedNormal, viewDepth);
+  // Alpha is unused; GTAO uses the depth buffer for view-space depth reconstruction.
+  return vec4<f32>(packedNormal, 0.0);
 }
 struct GtaoParams {
   viewport: vec2<f32>,
@@ -7650,7 +7649,7 @@ struct GtaoParams {
   blurDepthSigma: f32,
   isPerspective: f32,
   outputMode: f32,
-  _pad0: f32,
+  sampleBudget: f32,
   blurDir: vec2<f32>,
   nearFar: vec2<f32>,
 };
@@ -7770,22 +7769,22 @@ fn sampleHorizonCos(
 }
 
 @fragment
-fn fsMain(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
+fn fsMain(@builtin(position) position: vec4<f32>) -> @location(0) f32 {
   let aoCoord = vec2<i32>(position.xy);
   let aoSize = vec2<i32>(params.aoViewport);
   if (!inBounds(aoCoord, aoSize)) {
-    return vec4<f32>(1.0);
+    return 1.0;
   }
 
   let fullCoord = aoToFullCoord(aoCoord);
   let fullSize = vec2<i32>(params.viewport);
   if (!inBounds(fullCoord, fullSize)) {
-    return vec4<f32>(1.0);
+    return 1.0;
   }
 
   let depth01 = textureLoad(depthTex, fullCoord, 0);
   if (depth01 >= 1.0) {
-    return vec4<f32>(1.0);
+    return 1.0;
   }
   let depth = linearizeDepth(depth01);
   let center = textureLoad(gbufferTex, fullCoord, 0);
@@ -7801,13 +7800,12 @@ fn fsMain(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
   // Fade out very small radii: most rounded offsets collapse to (0,0), producing unstable noise/banding.
   let radiusFade = smoothstep(pixelTooCloseThreshold, pixelTooCloseThreshold + 1.0, screenspaceRadius);
   if (radiusFade <= 0.0) {
-    return vec4<f32>(1.0);
+    return 1.0;
   }
 
   let sliceCount = max(1, min(i32(params.sampleCount + 0.5), 24));
-  // Keep the overall depth fetch budget roughly stable as the user changes sliceCount.
-  // With sliceCount up to 24, allow 1-step slices to avoid forcing a cost increase.
-  let stepsPerSlice = clamp(i32(24.0 / f32(sliceCount) + 0.5), 1, 8);
+  let budget = clamp(i32(params.sampleBudget + 0.5), 1, 64);
+  let stepsPerSlice = clamp(i32(f32(budget) / f32(sliceCount) + 0.5), 1, 8);
   // Larger `cornerBoost` concentrates samples closer to the center, improving contact shadows in small creases.
   let distributionPower = mix(1.0, 3.0, params.cornerBoost);
 
@@ -7919,7 +7917,7 @@ fn fsMain(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
   var ao = 1.0 - (1.0 - visibility) * params.intensity;
   ao = pow(clamp(ao, 0.0, 1.0), params.power);
   ao = mix(1.0, ao, radiusFade);
-  return vec4<f32>(ao, ao, ao, 1.0);
+  return ao;
 }
 struct GtaoParams {
   viewport: vec2<f32>,
@@ -7939,7 +7937,7 @@ struct GtaoParams {
   blurDepthSigma: f32,
   isPerspective: f32,
   outputMode: f32,
-  _pad0: f32,
+  sampleBudget: f32,
   blurDir: vec2<f32>,
   nearFar: vec2<f32>,
 };
@@ -7999,23 +7997,23 @@ fn vsMain(@builtin(vertex_index) vertexIndex: u32) -> VertexOut {
 }
 
 @fragment
-fn fsMain(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
+fn fsMain(@builtin(position) position: vec4<f32>) -> @location(0) f32 {
   let aoCoord = vec2<i32>(position.xy);
   let aoSize = vec2<i32>(params.aoViewport);
   if (!inBounds(aoCoord, aoSize)) {
-    return vec4<f32>(1.0);
+    return 1.0;
   }
 
   let fullCoord = aoToFullCoord(aoCoord);
   let fullSize = vec2<i32>(params.viewport);
   if (!inBounds(fullCoord, fullSize)) {
-    return vec4<f32>(1.0);
+    return 1.0;
   }
 
   let centerG = textureLoad(gbufferTex, fullCoord, 0);
   let centerDepth01 = textureLoad(depthTex, fullCoord, 0);
   if (centerDepth01 >= 1.0) {
-    return vec4<f32>(1.0);
+    return 1.0;
   }
   let centerDepth = linearizeDepth(centerDepth01);
   let centerNormal = decodeNormal(centerG.xyz);
@@ -8059,10 +8057,10 @@ fn fsMain(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
   }
 
   if (weightSum <= 0.0) {
-    return vec4<f32>(1.0);
+    return 1.0;
   }
   let ao = sum / weightSum;
-  return vec4<f32>(ao, ao, ao, 1.0);
+  return ao;
 }
 struct GtaoParams {
   viewport: vec2<f32>,
@@ -8082,7 +8080,7 @@ struct GtaoParams {
   blurDepthSigma: f32,
   isPerspective: f32,
   outputMode: f32,
-  _pad0: f32,
+  sampleBudget: f32,
   blurDir: vec2<f32>,
   nearFar: vec2<f32>,
 };
