@@ -7385,8 +7385,13 @@ struct FrameUniforms {
   cameraPos: vec3<f32>,
   devicePixelRatio: f32,
   cameraDir: vec3<f32>,
-  _pad0: f32,
+  msaaSampleCount: f32,
   viewport: vec4<f32>,
+  envTop: vec4<f32>,
+  envBottom: vec4<f32>,
+  envParams: vec4<f32>,
+  glassAbsorption: vec4<f32>,
+  glassRoughness: vec4<f32>,
 };
 
 struct ObjectUniforms {
@@ -7394,6 +7399,7 @@ struct ObjectUniforms {
   color: vec4<f32>,
   material: vec4<f32>,
   pick: vec4<f32>,
+  textLook: vec4<f32>,
 };
 
 @group(0) @binding(0)
@@ -7462,8 +7468,13 @@ struct FrameUniforms {
   cameraPos: vec3<f32>,
   devicePixelRatio: f32,
   cameraDir: vec3<f32>,
-  _pad0: f32,
+  msaaSampleCount: f32,
   viewport: vec4<f32>,
+  envTop: vec4<f32>,
+  envBottom: vec4<f32>,
+  envParams: vec4<f32>,
+  glassAbsorption: vec4<f32>,
+  glassRoughness: vec4<f32>,
 };
 
 struct ObjectUniforms {
@@ -7471,6 +7482,7 @@ struct ObjectUniforms {
   color: vec4<f32>,
   material: vec4<f32>,
   pick: vec4<f32>,
+  textLook: vec4<f32>,
 };
 
 override kUseHiddenThickness: bool = false;
@@ -7590,6 +7602,7 @@ struct ObjectUniforms {
   color: vec4<f32>,
   material: vec4<f32>,
   pick: vec4<f32>,
+  textLook: vec4<f32>,
 };
 
 @group(0) @binding(0)
@@ -8430,8 +8443,13 @@ struct FrameUniforms {
   cameraPos: vec3<f32>,
   devicePixelRatio: f32,
   cameraDir: vec3<f32>,
-  _pad0: f32,
+  msaaSampleCount: f32,
   viewport: vec4<f32>,
+  envTop: vec4<f32>,
+  envBottom: vec4<f32>,
+  envParams: vec4<f32>,
+  glassAbsorption: vec4<f32>,
+  glassRoughness: vec4<f32>,
 };
 
 struct ObjectUniforms {
@@ -8439,6 +8457,7 @@ struct ObjectUniforms {
   color: vec4<f32>,
   material: vec4<f32>,
   pick: vec4<f32>,
+  textLook: vec4<f32>,
 };
 
 struct TextLookUniforms {
@@ -8459,6 +8478,11 @@ const MATERIAL_TYPE_TERRAIN: i32 = 1;
 const MATERIAL_TYPE_WIREFRAME: i32 = 2;
 const MATERIAL_TYPE_GLASS: i32 = 3;
 const MATERIAL_TYPE_HIDDEN: i32 = 4;
+
+const GRID_EDGE_PX_MSAA: f32 = 0.35;
+const GRID_EDGE_PX_NO_MSAA: f32 = 0.9;
+// Slightly narrower AA for grid-only lines without MSAA to keep them thin while staying smooth.
+const GRID_EDGE_PX_GRID_ONLY_NO_MSAA: f32 = 0.6;
 
 @group(0) @binding(0)
 var<uniform> frame: FrameUniforms;
@@ -8713,13 +8737,20 @@ fn fract2(v: vec2<f32>) -> vec2<f32> {
   return v - floor(v);
 }
 
+fn textLookSeedFrom(seedInput: vec2<f32>) -> vec2<f32> {
+  return vec2<f32>(
+    fract(seedInput.x * 0.1031 + seedInput.y * 0.11369),
+    fract(seedInput.x * 0.13787 + seedInput.y * 0.1013)
+  );
+}
+
 const kTextLookDebugCodesSingle = array<u32, 8>(103u, 0u, 0u, 0u, 0u, 0u, 0u, 0u); // "g"
 const kTextLookDebugCodesMulti = array<u32, 8>(65u, 103u, 106u, 112u, 0u, 0u, 0u, 0u); // "Agjp"
 const kTextLookDebugCodesKerning = array<u32, 8>(65u, 86u, 65u, 84u, 65u, 82u, 0u, 0u); // "AVATAR"
 // Debug: flip to `true` to render per-glyph bounds rectangles.
 const kTextLookDebugBoundsEnabled: bool = false;
 
-fn textLookInkMask(localPos: vec3<f32>, n: vec3<f32>) -> vec3<f32> {
+fn textLookInkMask(localPos: vec3<f32>, n: vec3<f32>, seedOffset: vec2<f32>) -> vec3<f32> {
   // Returns (fillAlpha, outlineAlpha, debugAlpha).
   let cloudSize = max(textLook.cloud.xy, vec2<f32>(1.0, 1.0));
   let gridDim = vec2<u32>(u32(textLook.grid.x + 0.5), u32(textLook.grid.y + 0.5));
@@ -8888,11 +8919,7 @@ fn textLookInkMask(localPos: vec3<f32>, n: vec3<f32>) -> vec3<f32> {
     let selectionRange = max(textLook.msdf.y, 1e-6);
 
     // Per-solid translation to avoid identical tiling across solids.
-    let seed = vec2<f32>(
-      fract(object.pick.y * 0.1031 + object.pick.z * 0.11369),
-      fract(object.pick.z * 0.13787 + object.pick.w * 0.1013)
-    );
-    p += seed * cloudSize;
+    p += seedOffset * cloudSize;
 
     // Wrap into a single tile: p in [0..cloudSize).
     p = fract2(p / cloudSize) * cloudSize;
@@ -8963,9 +8990,7 @@ fn textLookInkMask(localPos: vec3<f32>, n: vec3<f32>) -> vec3<f32> {
           let edgeDist = min(min(glyphUv.x, 1.0 - glyphUv.x), min(glyphUv.y, 1.0 - glyphUv.y));
           let padMin = min(padUv.x, padUv.y);
           let feather = max(1.0 / max(glyphTexels.x, glyphTexels.y), 0.35 * padMin);
-          let edgeStart = max(0.0, padMin - feather);
-          let edgeEnd = padMin + feather;
-          let edgeMask = smoothstep(edgeStart, edgeEnd, edgeDist);
+          let edgeMask = 1.0;
 
           var texcoord = ch.texOffset + glyphUv * ch.texExtent;
           // Avoid sampling across atlas-glyph boundaries (can show up as a colored 1px frame at high zoom).
@@ -9051,6 +9076,8 @@ fn gridMask(
   worldPos: vec3<f32>,
   spacing: f32,
   thicknessPx: f32,
+  edgePx: f32,
+  opaqueCore: bool,
   xMin: f32,
   xMax: f32,
   zMin: f32,
@@ -9060,8 +9087,8 @@ fn gridMask(
     return 0.0;
   }
   let s = max(1e-4, spacing);
-  let lineX = gridLineMask(worldPos.x, s, thicknessPx, xMin, xMax);
-  let lineZ = gridLineMask(worldPos.z, s, thicknessPx, zMin, zMax);
+  let lineX = gridLineMask(worldPos.x, s, thicknessPx, edgePx, opaqueCore, xMin, xMax);
+  let lineZ = gridLineMask(worldPos.z, s, thicknessPx, edgePx, opaqueCore, zMin, zMax);
   return max(lineX, lineZ);
 }
 
@@ -9069,6 +9096,8 @@ fn gridLineMask(
   u: f32,
   spacing: f32,
   thicknessPx: f32,
+  edgePx: f32,
+  opaqueCore: bool,
   minBound: f32,
   maxBound: f32
 ) -> f32 {
@@ -9077,6 +9106,7 @@ fn gridLineMask(
   let cell = fract(coord);
   let dist = min(cell, 1.0 - cell);
   let fw = max(fwidth(coord), 1e-4);
+  let distPx = dist / fw;
   let lineIndex = round(coord);
   let linePos = lineIndex * spacing;
   let hasBounds = maxBound > minBound + 1e-4;
@@ -9086,8 +9116,39 @@ fn gridLineMask(
   // Convert pixel thickness to grid-space width so the line stays constant on zoom.
   // Boundary lines are clipped by the terrain edge, so widen them to match interior weight.
   let boundaryScale = select(1.0, 2.0, isBoundary);
-  let halfWidth = 0.5 * thicknessPx * fw * boundaryScale;
-  return 1.0 - smoothstep(halfWidth - fw, halfWidth + fw, dist);
+  let halfWidthPx = 0.5 * thicknessPx * boundaryScale;
+  let aa = max(edgePx, 1e-4);
+  let centered = 1.0 - smoothstep(halfWidthPx - aa, halfWidthPx + aa, distPx);
+  let outward = 1.0 - smoothstep(halfWidthPx, halfWidthPx + aa, distPx);
+  return select(centered, outward, opaqueCore);
+}
+
+fn studioEnvLobe(dir: vec3<f32>, axis: vec3<f32>, power: f32) -> f32 {
+  let d = max(dot(dir, axis), 0.0);
+  return pow(d, power);
+}
+
+fn hash13(p: vec3<f32>) -> f32 {
+  let h = dot(p, vec3<f32>(127.1, 311.7, 74.7));
+  return fract(sin(h) * 43758.5453123);
+}
+
+// Procedural studio environment: bright softboxes + dark flags for readable glass on light backgrounds.
+fn studioEnvColor(dir: vec3<f32>) -> vec3<f32> {
+  let horizon = clamp(dir.y * 0.5 + 0.5, 0.0, 1.0);
+  let base = mix(frame.envBottom.rgb, frame.envTop.rgb, smoothstep(0.0, 1.0, horizon));
+  let softPower = max(frame.envParams.y, 1.0);
+  let soft1 = studioEnvLobe(dir, normalize(vec3<f32>(0.2, 0.9, 0.35)), softPower);
+  let soft2 = studioEnvLobe(dir, normalize(vec3<f32>(-0.25, 0.8, -0.45)), softPower * 0.9);
+  let softboxColor = mix(frame.envTop.rgb, vec3<f32>(1.0, 1.0, 1.0), 0.65);
+  var color = base;
+  color += softboxColor * frame.envParams.x * (soft1 + 0.6 * soft2);
+
+  let flag1 = studioEnvLobe(dir, normalize(vec3<f32>(0.95, 0.1, 0.0)), softPower * 0.8);
+  let flag2 = studioEnvLobe(dir, normalize(vec3<f32>(-0.9, 0.15, 0.2)), softPower * 0.8);
+  let flag = clamp(flag1 + flag2, 0.0, 1.0);
+  color = color * (1.0 - frame.envBottom.w * flag);
+  return color * frame.envTop.w;
 }
 
 @fragment
@@ -9099,7 +9160,8 @@ fn fsMain(input: VertexOut, @builtin(front_facing) isFront: bool) -> @location(0
   let fill = 0.30;
   let materialType = i32(round(object.material.y));
   let patternId = i32(round(object.material.x));
-  let gridOnly = object.material.w;
+  let gridOnlyValue = object.material.w;
+  let gridOnly = gridOnlyValue > 0.0;
   // Section surfaces store a non-zero section-edge id in material.z (used by `sectionsId.wgsl`).
   // Use it to apply a slightly richer, view-dependent lighting that helps flat section cuts read better.
   let isSectionSurface = materialType == MATERIAL_TYPE_STANDARD && object.material.z > 0.5;
@@ -9125,18 +9187,29 @@ fn fsMain(input: VertexOut, @builtin(front_facing) isFront: bool) -> @location(0
   let base = object.color.rgb * lightFactor;
 
   if (materialType == MATERIAL_TYPE_TERRAIN) {
-    let gridThicknessPx = select(0.5, 1.0, gridOnly > 0.5);
+    let gridThicknessPx = select(0.5, gridOnlyValue, gridOnly);
+    let noMsaa = frame.msaaSampleCount < 2.0;
+    let edgePx = select(GRID_EDGE_PX_MSAA, GRID_EDGE_PX_NO_MSAA, noMsaa);
+    let gridEdgePx = select(edgePx, GRID_EDGE_PX_GRID_ONLY_NO_MSAA, gridOnly && noMsaa);
     let xMin = object.material.x;
     let xMax = object.pick.y;
     let zMin = object.pick.z;
     let zMax = object.pick.w;
-    let grid = gridMask(input.worldPos, object.material.z, gridThicknessPx, xMin, xMax, zMin, zMax);
+    let grid = gridMask(input.worldPos,
+                        object.material.z,
+                        gridThicknessPx,
+                        gridEdgePx,
+                        gridOnly && noMsaa,
+                        xMin,
+                        xMax,
+                        zMin,
+                        zMax);
     let gridColor = select(
       vec3<f32>(1.0, 1.0, 1.0),
       vec3<f32>(0.66, 0.66, 0.66),
-      gridOnly > 0.5
+      gridOnly
     );
-    if (gridOnly > 0.5) {
+    if (gridOnly) {
       if (grid <= 0.0) {
         discard;
       }
@@ -9152,7 +9225,22 @@ fn fsMain(input: VertexOut, @builtin(front_facing) isFront: bool) -> @location(0
     let fresnel = pow(1.0 - max(dot(shadeNormal, viewDir), 0.0), 3.0);
     let glassLight = mix(0.65, 1.0, ndotl);
     let glassBase = object.color.rgb * glassLight;
-    let rim = mix(glassBase, vec3<f32>(1.0, 1.0, 1.0), 0.6);
+    // Guard to keep the thickness approximation stable at grazing angles.
+    let ndotv = max(abs(dot(shadeNormal, viewDir)), 0.05);
+    let thickness = frame.glassAbsorption.w / ndotv;
+    let absorption = exp(-frame.glassAbsorption.rgb * thickness);
+    let glassTrans = glassBase * absorption;
+    let refl = reflect(-viewDir, shadeNormal);
+    let noise = hash13(input.worldPos * frame.glassRoughness.w);
+    let envLuma = dot(frame.envTop.rgb, vec3<f32>(0.2126, 0.7152, 0.0722));
+    let roughBase = mix(frame.glassRoughness.x, frame.glassRoughness.y, clamp(envLuma, 0.0, 1.0));
+    let roughness = clamp(roughBase + (noise - 0.5) * frame.glassRoughness.z, 0.01, 0.35);
+    // Tie the blur mix to roughness so we avoid another uniform in this pass.
+    let reflBlur = normalize(mix(refl, vec3<f32>(0.0, 1.0, 0.0), roughness * 0.85));
+    let envColor = mix(studioEnvColor(refl), studioEnvColor(reflBlur), roughness);
+    let envEnabled = clamp(frame.envParams.z, 0.0, 1.0);
+    let rimTarget = mix(vec3<f32>(1.0, 1.0, 1.0), envColor, envEnabled * 0.5);
+    let rim = mix(glassBase, rimTarget, 0.6);
     let keyLight = normalize(vec3<f32>(0.35, 0.85, 0.25));
     let halfVec = normalize(keyLight + viewDir);
     let spec = pow(max(dot(shadeNormal, halfVec), 0.0), 64.0);
@@ -9164,24 +9252,37 @@ fn fsMain(input: VertexOut, @builtin(front_facing) isFront: bool) -> @location(0
     let spec1 = pow(max(dot(shadeNormal, halfVec1), 0.0), 64.0);
     let spec2 = pow(max(dot(shadeNormal, halfVec2), 0.0), 64.0);
     let extraSpec = (spec1 + spec2) * 0.18;
-    let color = mix(glassBase, rim, fresnel) + spec * 0.25 + extraSpec;
+    let envBlend = clamp((0.15 + 0.85 * fresnel) * envEnabled, 0.0, 1.0);
+    let color = mix(glassTrans, rim, fresnel);
+    let shaded = mix(color, envColor, envBlend) + spec * 0.25 + extraSpec;
     let alpha = clamp(object.color.a * (0.7 + 0.7 * fresnel), 0.0, 1.0);
     if (patternId != 0 && !isTerrain) {
       // Preserve soil hatch even in glass mode (helps keep sections readable while transparent).
       let hatch = hatchPattern(input.worldPos, n, patternId, object.material.w);
       let ink = vec3<f32>(0.0, 0.0, 0.0);
-      let hatched = mix(color, ink, clamp(hatch * 0.65, 0.0, 1.0));
+      let hatched = mix(shaded, ink, clamp(hatch * 0.65, 0.0, 1.0));
       let hatchedAlpha = clamp(alpha + hatch * 0.15, 0.0, 1.0);
       return vec4<f32>(hatched, hatchedAlpha);
     }
-    return vec4<f32>(color, alpha);
+    return vec4<f32>(shaded, alpha);
   }
 
   var inkMask = 0.0;
   var color = base;
 
   if (isText) {
-    let inkAo = textLookInkMask(input.localPos, input.localNormal);
+    let seedA = textLookSeedFrom(object.pick.yz);
+    let seedB = textLookSeedFrom(object.textLook.xy);
+    let blend = clamp(object.pick.w, 0.0, 1.0);
+    let debugMode = textLook.style.w;
+    var inkAo = vec3<f32>(0.0, 0.0, 0.0);
+    if (debugMode > 0.5) {
+      inkAo = textLookInkMask(input.localPos, input.localNormal, seedA);
+    } else {
+      let inkA = textLookInkMask(input.localPos, input.localNormal, seedA);
+      let inkB = textLookInkMask(input.localPos, input.localNormal, seedB);
+      inkAo = mix(inkA, inkB, blend);
+    }
     let fillA = inkAo.x;
     let outlineA = inkAo.y;
     let debugA = inkAo.z;
@@ -9189,16 +9290,18 @@ fn fsMain(input: VertexOut, @builtin(front_facing) isFront: bool) -> @location(0
     let luma = dot(base, vec3<f32>(0.2126, 0.7152, 0.0722));
     let textRgb = select(vec3<f32>(0.0, 0.0, 0.0), vec3<f32>(1.0, 1.0, 1.0), luma < 0.45);
 
-    let strength = clamp(textLook.style.x, 0.0, 1.0);
-    let outlineStrength = clamp(textLook.style.z, 0.0, 1.0);
+    let introFade = clamp(object.textLook.z, 0.0, 1.0);
+    let strength = clamp(textLook.style.x, 0.0, 1.0) * introFade;
+    let outlineStrength = clamp(textLook.style.z, 0.0, 1.0) * introFade;
+    let debugScaled = debugA * introFade;
 
     color = mix(color, textRgb, fillA * strength);
     color = mix(color, textRgb, outlineA * strength * outlineStrength);
-    if (debugA > 0.0) {
+    if (debugScaled > 0.0) {
       let debugRgb = vec3<f32>(0.1, 0.9, 0.2);
-      color = mix(color, debugRgb, debugA);
+      color = mix(color, debugRgb, debugScaled);
     }
-    inkMask = clamp(fillA * strength + outlineA * strength * outlineStrength + debugA, 0.0, 1.0);
+    inkMask = clamp(fillA * strength + outlineA * strength * outlineStrength + debugScaled, 0.0, 1.0);
   } else {
     let hatch = select(0.0, hatchPattern(input.worldPos, n, patternId, object.material.w), patternId != 0);
     let ink = vec3<f32>(0.0, 0.0, 0.0);
@@ -9409,8 +9512,13 @@ struct FrameUniforms {
   cameraPos: vec3<f32>,
   devicePixelRatio: f32,
   cameraDir: vec3<f32>,
-  _pad0: f32,
+  msaaSampleCount: f32,
   viewport: vec4<f32>,
+  envTop: vec4<f32>,
+  envBottom: vec4<f32>,
+  envParams: vec4<f32>,
+  glassAbsorption: vec4<f32>,
+  glassRoughness: vec4<f32>,
 };
 
 struct ObjectUniforms {
@@ -9418,6 +9526,7 @@ struct ObjectUniforms {
   color: vec4<f32>,
   material: vec4<f32>,
   pick: vec4<f32>,
+  textLook: vec4<f32>,
 };
 
 @group(0) @binding(0)
@@ -9601,8 +9710,13 @@ struct FrameUniforms {
   cameraPos: vec3<f32>,
   devicePixelRatio: f32,
   cameraDir: vec3<f32>,
-  _pad0: f32,
+  msaaSampleCount: f32,
   viewport: vec4<f32>,
+  envTop: vec4<f32>,
+  envBottom: vec4<f32>,
+  envParams: vec4<f32>,
+  glassAbsorption: vec4<f32>,
+  glassRoughness: vec4<f32>,
 };
 
 struct ObjectUniforms {
@@ -9610,6 +9724,7 @@ struct ObjectUniforms {
   color: vec4<f32>,
   material: vec4<f32>,
   pick: vec4<f32>,
+  textLook: vec4<f32>,
 };
 
 @group(0) @binding(0)
@@ -9668,8 +9783,13 @@ struct FrameUniforms {
   cameraPos: vec3<f32>,
   devicePixelRatio: f32,
   cameraDir: vec3<f32>,
-  _pad0: f32,
+  msaaSampleCount: f32,
   viewport: vec4<f32>,
+  envTop: vec4<f32>,
+  envBottom: vec4<f32>,
+  envParams: vec4<f32>,
+  glassAbsorption: vec4<f32>,
+  glassRoughness: vec4<f32>,
 };
 
 struct ObjectUniforms {
@@ -9677,9 +9797,11 @@ struct ObjectUniforms {
   color: vec4<f32>,
   material: vec4<f32>,
   pick: vec4<f32>,
+  textLook: vec4<f32>,
 };
 
 override kIsHiddenPass: bool = false;
+override kWireframeDepthOffsetNdc: f32 = 0.0;
 const kHiddenAlphaMul: f32 = 0.15;
 
 @group(0) @binding(0)
@@ -9701,6 +9823,9 @@ fn vsMain(input: VertexIn) -> VertexOut {
   var out: VertexOut;
   let worldPos = object.model * vec4<f32>(input.position, 1.0);
   out.position = frame.viewProj * worldPos;
+  // Offset visible wireframe lines towards the camera to reduce z-fighting with solid surfaces.
+  let depthOffset = select(kWireframeDepthOffsetNdc, 0.0, kIsHiddenPass);
+  out.position.z -= depthOffset * out.position.w;
   return out;
 }
 
