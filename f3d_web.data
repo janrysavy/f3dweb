@@ -8963,7 +8963,9 @@ fn textLookInkMask(localPos: vec3<f32>, n: vec3<f32>) -> vec3<f32> {
           let edgeDist = min(min(glyphUv.x, 1.0 - glyphUv.x), min(glyphUv.y, 1.0 - glyphUv.y));
           let padMin = min(padUv.x, padUv.y);
           let feather = max(1.0 / max(glyphTexels.x, glyphTexels.y), 0.35 * padMin);
-          let edgeMask = 1.0;
+          let edgeStart = max(0.0, padMin - feather);
+          let edgeEnd = padMin + feather;
+          let edgeMask = smoothstep(edgeStart, edgeEnd, edgeDist);
 
           var texcoord = ch.texOffset + glyphUv * ch.texExtent;
           // Avoid sampling across atlas-glyph boundaries (can show up as a colored 1px frame at high zoom).
