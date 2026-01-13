@@ -7347,37 +7347,7 @@ r
    ¤  M  ¦  M         
    ¥  P  §  P   J£       •   K       '   º       ¬   6        ãä       
  åæ   / O        (*)+, !®#$%   ' ( + 3 5 F G H K S T U        &''   I K®       f =-.019:<                  ­"pqrstu        u"pqrs­t                            -.019:<=       i             R      J  ||  ÔÝ        (À        
-2 z s t345678             & ÔÕÖ×ØÙÚÛÜÝ@>AB?á             M N­šœ@group(0) @binding(0) var blitSampler: sampler;
-@group(0) @binding(1) var blitTex: texture_2d<f32>;
-
-struct VsOut {
-  @builtin(position) position: vec4<f32>,
-  @location(0) uv: vec2<f32>,
-};
-
-@vertex
-fn vsMain(@builtin(vertex_index) vertexIndex: u32) -> VsOut {
-  var positions = array<vec2<f32>, 3>(
-    vec2<f32>(-1.0, -1.0),
-    vec2<f32>(3.0, -1.0),
-    vec2<f32>(-1.0, 3.0)
-  );
-  var uvs = array<vec2<f32>, 3>(
-    vec2<f32>(0.0, 0.0),
-    vec2<f32>(2.0, 0.0),
-    vec2<f32>(0.0, 2.0)
-  );
-  var out: VsOut;
-  out.position = vec4<f32>(positions[vertexIndex], 0.0, 1.0);
-  out.uv = uvs[vertexIndex];
-  return out;
-}
-
-@fragment
-fn fsMain(in: VsOut) -> @location(0) vec4<f32> {
-  return textureSample(blitTex, blitSampler, clamp(in.uv, vec2<f32>(0.0), vec2<f32>(1.0)));
-}
-struct CheckerboardParams {
+2 z s t345678             & ÔÕÖ×ØÙÚÛÜÝ@>AB?á             M N­šœstruct CheckerboardParams {
   colorA: vec4<f32>,
   colorB: vec4<f32>,
   tileSizePx: f32,
@@ -7422,7 +7392,6 @@ struct FrameUniforms {
   envParams: vec4<f32>,
   glassAbsorption: vec4<f32>,
   glassRoughness: vec4<f32>,
-  glassRefraction: vec4<f32>,
 };
 
 struct ObjectUniforms {
@@ -7506,7 +7475,6 @@ struct FrameUniforms {
   envParams: vec4<f32>,
   glassAbsorption: vec4<f32>,
   glassRoughness: vec4<f32>,
-  glassRefraction: vec4<f32>,
 };
 
 struct ObjectUniforms {
@@ -8482,14 +8450,7 @@ struct FrameUniforms {
   envParams: vec4<f32>,
   glassAbsorption: vec4<f32>,
   glassRoughness: vec4<f32>,
-  glassRefraction: vec4<f32>,
 };
-
-@group(3) @binding(0)
-var preGlassSampler: sampler;
-
-@group(3) @binding(1)
-var preGlassTex: texture_2d<f32>;
 
 struct ObjectUniforms {
   model: mat4x4<f32>,
@@ -8565,7 +8526,6 @@ struct VertexOut {
   @location(1) worldPos: vec3<f32>,
   @location(2) localPos: vec3<f32>,
   @location(3) localNormal: vec3<f32>,
-  @location(4) screenUv: vec2<f32>,
 };
 
 @vertex
@@ -8577,8 +8537,6 @@ fn vsMain(input: VertexIn) -> VertexOut {
   out.worldPos = worldPos.xyz;
   out.localPos = input.position;
   out.localNormal = normalize(input.normal);
-  let ndc = out.position.xy / out.position.w;
-  out.screenUv = ndc * 0.5 + vec2<f32>(0.5, 0.5);
   return out;
 }
 
@@ -9175,13 +9133,6 @@ fn hash13(p: vec3<f32>) -> f32 {
   return fract(sin(h) * 43758.5453123);
 }
 
-fn refractDir(i: vec3<f32>, n: vec3<f32>, eta: f32) -> vec3<f32> {
-  let cosi = dot(n, i);
-  let k = 1.0 - eta * eta * (1.0 - cosi * cosi);
-  let t = eta * i - (eta * cosi + sqrt(max(k, 0.0))) * n;
-  return select(vec3<f32>(0.0), t, k >= 0.0);
-}
-
 // Procedural studio environment: bright softboxes + dark flags for readable glass on light backgrounds.
 fn studioEnvColor(dir: vec3<f32>) -> vec3<f32> {
   let horizon = clamp(dir.y * 0.5 + 0.5, 0.0, 1.0);
@@ -9201,8 +9152,7 @@ fn studioEnvColor(dir: vec3<f32>) -> vec3<f32> {
 }
 
 @fragment
-fn fsMain(input: VertexOut,
-          @builtin(front_facing) isFront: bool) -> @location(0) vec4<f32> {
+fn fsMain(input: VertexOut, @builtin(front_facing) isFront: bool) -> @location(0) vec4<f32> {
   let light = normalize(-frame.cameraDir);
   let n = normalize(input.normal);
   let shadeNormal = select(-n, n, isFront);
@@ -9280,15 +9230,6 @@ fn fsMain(input: VertexOut,
     let thickness = frame.glassAbsorption.w / ndotv;
     let absorption = exp(-frame.glassAbsorption.rgb * thickness);
     let glassTrans = glassBase * absorption;
-    let eta = 1.0 / max(frame.glassRefraction.x, 1e-3);
-    let refrDir = refractDir(-viewDir, shadeNormal, eta);
-    let uv = input.screenUv;
-    let refrUv = uv + refrDir.xy * frame.glassRefraction.z;
-    let flipY = clamp(frame.glassRefraction.w, 0.0, 1.0);
-    let refrUvFlipped = vec2<f32>(refrUv.x, mix(refrUv.y, 1.0 - refrUv.y, flipY));
-    let refrUvClamped = clamp(refrUvFlipped, vec2<f32>(0.0), vec2<f32>(1.0));
-    let bg = textureSample(preGlassTex, preGlassSampler, refrUvClamped).rgb;
-    let trans = mix(glassTrans, bg, clamp(frame.glassRefraction.y, 0.0, 1.0));
     let refl = reflect(-viewDir, shadeNormal);
     let noise = hash13(input.worldPos * frame.glassRoughness.w);
     let envLuma = dot(frame.envTop.rgb, vec3<f32>(0.2126, 0.7152, 0.0722));
@@ -9312,7 +9253,7 @@ fn fsMain(input: VertexOut,
     let spec2 = pow(max(dot(shadeNormal, halfVec2), 0.0), 64.0);
     let extraSpec = (spec1 + spec2) * 0.18;
     let envBlend = clamp((0.15 + 0.85 * fresnel) * envEnabled, 0.0, 1.0);
-    let color = mix(trans, rim, fresnel);
+    let color = mix(glassTrans, rim, fresnel);
     let shaded = mix(color, envColor, envBlend) + spec * 0.25 + extraSpec;
     let alpha = clamp(object.color.a * (0.7 + 0.7 * fresnel), 0.0, 1.0);
     if (patternId != 0 && !isTerrain) {
@@ -9578,7 +9519,6 @@ struct FrameUniforms {
   envParams: vec4<f32>,
   glassAbsorption: vec4<f32>,
   glassRoughness: vec4<f32>,
-  glassRefraction: vec4<f32>,
 };
 
 struct ObjectUniforms {
@@ -9777,7 +9717,6 @@ struct FrameUniforms {
   envParams: vec4<f32>,
   glassAbsorption: vec4<f32>,
   glassRoughness: vec4<f32>,
-  glassRefraction: vec4<f32>,
 };
 
 struct ObjectUniforms {
@@ -9851,7 +9790,6 @@ struct FrameUniforms {
   envParams: vec4<f32>,
   glassAbsorption: vec4<f32>,
   glassRoughness: vec4<f32>,
-  glassRefraction: vec4<f32>,
 };
 
 struct ObjectUniforms {
